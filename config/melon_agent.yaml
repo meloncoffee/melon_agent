@@ -1,0 +1,15 @@
+server:
+  port: 8888
+  tlsEnabled: true
+
+api:
+  metricURI: /metrics
+  healthURI: /health
+  sysStatURI: /sys/stat
+  loginURI: /login
+
+log:
+  maxLogFileSize: 100
+  maxLogFileBackup: 10
+  maxLogFileAge: 90
+  compBakLogFile: true
