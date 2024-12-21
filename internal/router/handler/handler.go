@@ -14,92 +14,70 @@
 
 //go:build linux
 
-package server
+package handler
 
 import (
-	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt"
 	"github.com/meloncoffee/melon_agent/config"
+	"github.com/meloncoffee/melon_agent/internal/auth"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/thoas/stats"
 )
 
-// metricsHandler prometheus 메트릭 제공 핸들러
+// MetricsHandler prometheus 메트릭 제공 핸들러
 //
 // Parameters:
 //   - c: HTTP 요청 및 응답과 관련된 정보를 포함하는 객체
-func metricsHandler(c *gin.Context) {
+func MetricsHandler(c *gin.Context) {
 	promhttp.Handler().ServeHTTP(c.Writer, c.Request)
 }
 
-// healthHandler 헬스 체크 핸들러
+// HealthHandler 헬스 체크 핸들러
 //
 // Parameters:
 //   - c: HTTP 요청 및 응답과 관련된 정보를 포함하는 객체
-func healthHandler(c *gin.Context) {
+func HealthHandler(c *gin.Context) {
 	c.AbortWithStatus(http.StatusOK)
 }
 
-// sysStatsHandler 서버 상태 정보 핸들러
+// SysStatsHandler 서버 상태 정보 핸들러
 //
 // Parameters:
 //   - c: HTTP 요청 및 응답과 관련된 정보를 포함하는 객체
-func sysStatsHandler(c *gin.Context) {
+//   - servStats: 요청 및 응답 통계 정보 구조체
+func SysStatsHandler(c *gin.Context, servStats *stats.Stats) {
 	c.JSON(http.StatusOK, servStats.Data())
 }
 
-// versionHandler 버전 정보 핸들러
+// VersionHandler 버전 정보 핸들러
 //
 // Parameters:
 //   - c: HTTP 요청 및 응답과 관련된 정보를 포함하는 객체
-func versionHandler(c *gin.Context) {
+func VersionHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"source":  "https://github.com/meloncoffee/melon_agent",
 		"version": config.Version,
 	})
 }
 
-// rootHandler 루트 경로 핸들러
+// RootHandler 루트 경로 핸들러
 //
 // Parameters:
 //   - c: HTTP 요청 및 응답과 관련된 정보를 포함하는 객체
-func rootHandler(c *gin.Context) {
+func RootHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"text": "Welcome to melon_agent.",
 	})
 }
 
-// genJWTToken JWT 토큰 생성
-//
-// Parameters:
-//   - username: JWT 토큰 생성 ID
-//
-// Returns:
-//   - string: JWT 토큰
-//   - error: 성공(nil), 실패(error)
-func genJWTToken(username string) (string, error) {
-	// JWT Claims 생성
-	claims := jwt.MapClaims{
-		"username": username,
-		"exp":      time.Now().Add(24 * time.Hour).Unix(),
-	}
-
-	// JWT 토큰 생성
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	if token == nil {
-		return "", fmt.Errorf("failed to generate JWT token")
-	}
-	return token.SignedString(jwtSecretKey)
-}
-
-// loginHandler 로그인 핸들러
+// LoginHandler 로그인 핸들러
 //
 // Parameters:
 //   - c: HTTP 요청 및 응답과 관련된 정보를 포함하는 객체
-func loginHandler(c *gin.Context) {
+//   - jwtSecretKey: JWT 토큰 서명 Secret Key
+func LoginHandler(c *gin.Context, jwtSecretKey string) {
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -119,7 +97,7 @@ func loginHandler(c *gin.Context) {
 	}
 
 	// JWT 토큰 생성
-	token, err := genJWTToken(req.Username)
+	token, err := auth.GenJWTToken(req.Username, jwtSecretKey)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
@@ -127,4 +105,12 @@ func loginHandler(c *gin.Context) {
 
 	// JWT 토큰 반환
 	c.JSON(http.StatusOK, gin.H{"token": token})
+}
+
+// RegisterAdminHandler 관리자 계정 등록 핸들러
+//
+// Parameters:
+//   - c: HTTP 요청 및 응답과 관련된 정보를 포함하는 객체
+func RegisterAdminHandler(c *gin.Context) {
+	// TODO: 구현
 }

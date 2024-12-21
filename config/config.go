@@ -62,6 +62,8 @@ type Config struct {
 		SysStatURI string `yaml:"sysStatURI"`
 		// JWT 토큰 요청 URI (DEF:/login)
 		LoginURI string `yaml:"loginURI"`
+		// 관리자 계정 정보 등록 요청 URI (DEF:/register/admin)
+		RegisterAdminURI string `yaml:"registerAdminURI"`
 	} `yaml:"api"`
 
 	// 로그 설정
@@ -96,6 +98,7 @@ func init() {
 	Conf.API.HealthURI = "/health"
 	Conf.API.SysStatURI = "/sys/stat"
 	Conf.API.LoginURI = "/login"
+	Conf.API.RegisterAdminURI = "/register/admin"
 
 	Conf.Log.MaxLogFileSize = 100
 	Conf.Log.MaxLogFileBackup = 10
@@ -142,6 +145,9 @@ func (c *Config) LoadConfig(filePath string) error {
 	}
 	if Conf.API.LoginURI == "" || Conf.API.LoginURI[0] != '/' {
 		Conf.API.LoginURI = "/login"
+	}
+	if Conf.API.RegisterAdminURI == "" || Conf.API.RegisterAdminURI[0] != '/' {
+		Conf.API.RegisterAdminURI = "/register/admin"
 	}
 	if Conf.Log.MaxLogFileSize < 1 || Conf.Log.MaxLogFileSize > 1000 {
 		Conf.Log.MaxLogFileSize = 100
