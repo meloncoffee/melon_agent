@@ -1,4 +1,5 @@
 MODULE_PATH=github.com/meloncoffee/melon_agent
+MODULE_NAME=melon_agent
 VERSION=0.9.0
 BUILD_TIME=$(shell date +%Y-%m-%d' '%H:%M:%S)
 
@@ -12,6 +13,7 @@ LDFLAGS=-X '${MODULE_PATH}/config.BuildTime=${BUILD_TIME}' \
 define go_build
 	mkdir -p ${BIN_DIR}/${CONF_DIR}
 	go build -o ${BIN_DIR}/${MODULE_NAME} -ldflags "${LDFLAGS}"
+	go build -gcflags="all=-N -l" -o ${BIN_DIR}/${MODULE_NAME}_debug -ldflags "${LDFLAGS}"
 	cp -f config/${CONF_FILE} ${BIN_DIR}/${CONF_DIR}/${CONF_FILE}
 endef
 

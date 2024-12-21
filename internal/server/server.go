@@ -176,8 +176,6 @@ func (s *Server) newGinRouterEngine() *gin.Engine {
 		servStats = stats.New()
 	})
 
-	s.genJWTSecretKey(32)
-
 	// gin 동작 모드 설정
 	gin.SetMode(func() string {
 		if config.RunConf.DebugMode {

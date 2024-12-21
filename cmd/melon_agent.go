@@ -33,7 +33,7 @@ var melonAgentCmd = &cobra.Command{
 }
 
 func init() {
-	melonAgentCmd.AddCommand(startCmd, debugCmd, stopCmd)
+	melonAgentCmd.AddCommand(startCmd, debugCmd, vsDebugCmd, stopCmd)
 }
 
 // Execute CLI 처리

@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -30,6 +31,7 @@ import (
 	"github.com/meloncoffee/melon_agent/internal/logger"
 	"github.com/meloncoffee/melon_agent/internal/resourcecollector"
 	"github.com/meloncoffee/melon_agent/internal/server"
+	"github.com/meloncoffee/melon_agent/internal/taskmanager"
 	"github.com/meloncoffee/melon_agent/pkg/utils/file"
 	"github.com/meloncoffee/melon_agent/pkg/utils/goroutine"
 	"github.com/meloncoffee/melon_agent/pkg/utils/network"
@@ -37,7 +39,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var oper operation
+var (
+	oper   operation
+	gm     *goroutine.GoroutineManager
+	taskGM *goroutine.GoroutineManager
+)
 
 var startCmd = &cobra.Command{
 	Use:   "start",
@@ -46,6 +52,11 @@ var startCmd = &cobra.Command{
 }
 var debugCmd = &cobra.Command{
 	Use:   "debug",
+	Short: "",
+	RunE:  WrapCmdFuncForCobra(oper.start),
+}
+var vsDebugCmd = &cobra.Command{
+	Use:   "vsdebug",
 	Short: "",
 	RunE:  WrapCmdFuncForCobra(oper.start),
 }
@@ -80,10 +91,12 @@ func (o *operation) start(cmd *cobra.Command) error {
 	}
 
 	// 데몬 프로세스 생성
-	err = process.DaemonizeProcess()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[ERROR] %v\n", err)
-		return err
+	if cmd.Use != "vsdebug" {
+		err = process.DaemonizeProcess()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[ERROR] %v\n", err)
+			return err
+		}
 	}
 
 	// 현재 프로세스 PID 저장
@@ -97,7 +110,7 @@ func (o *operation) start(cmd *cobra.Command) error {
 	}
 
 	// 디버그 모드 체크 (디버그 모드일 경우 stdout, stderr 출력)
-	if cmd.Use == "debug" {
+	if cmd.Use == "debug" || cmd.Use == "vsdebug" {
 		config.RunConf.DebugMode = true
 	} else {
 		os.Stdout = nil
@@ -109,12 +122,14 @@ func (o *operation) start(cmd *cobra.Command) error {
 	defer signal.Stop(sigChan)
 
 	// 고루틴 관리 구조체 생성
-	gm := goroutine.NewGoroutineManager()
+	taskGM = goroutine.NewGoroutineManager()
+	gm = goroutine.NewGoroutineManager()
 	// 패닉 핸들러 설정
+	taskGM.PanicHandler = o.panicHandler
 	gm.PanicHandler = o.panicHandler
 
-	o.initialization(gm)
-	defer o.finalization(gm)
+	o.initialization()
+	defer o.finalization()
 
 	logger.Log.LogInfo("Start %s (pid:%d, mode:%s)", config.ModuleName, config.RunConf.Pid,
 		func() string {
@@ -125,6 +140,7 @@ func (o *operation) start(cmd *cobra.Command) error {
 		}())
 
 	// 작업에 등록된 모든 고루틴 가동
+	taskGM.Start(string(taskmanager.TaskManagerStr))
 	gm.StartAll()
 
 	// 종료 시그널 대기 (SIGINT, SIGTERM, SIGUSR1)
@@ -165,10 +181,7 @@ func (o *operation) stop(cmd *cobra.Command) error {
 }
 
 // initialization 모듈 초기화
-//
-// Parameters:
-//   - gm: 고루틴 동작 관리 구조체
-func (o *operation) initialization(gm *goroutine.GoroutineManager) {
+func (o *operation) initialization() {
 	var errors []error
 
 	// 설정 파일 로드
@@ -186,20 +199,36 @@ func (o *operation) initialization(gm *goroutine.GoroutineManager) {
 		}
 	}
 
+	// 작업 목록에 작업 매니저 고루틴 등록
+	var taskManager taskmanager.TaskManager
+	taskGM.AddTask(string(taskmanager.TaskManagerStr), func(ctx context.Context) {
+		taskManager.Run(ctx, gm)
+	})
+
 	// 작업 목록에 고루틴 등록
 	var server server.Server
-	gm.AddTask("server", server.Run)
+	gm.AddTask(string(taskmanager.ServerStr), server.Run)
 	var resourceCollector resourcecollector.ResourceCollector
-	gm.AddTask("resourceCollector", resourceCollector.Run)
+	gm.AddTask(string(taskmanager.ResourceCollectorStr), resourceCollector.Run)
 }
 
 // finalization 모듈 종료 시 자원 정리
-//
-// Parameters:
-//   - gm: 고루틴 동작 관리 구조체
-func (o *operation) finalization(gm *goroutine.GoroutineManager) {
+func (o *operation) finalization() {
+	// 작업 매니저 고루틴 종료
+	// [Warning] 작업 매니저 고루틴은 다른 고루틴들을 재가동 시킬 수 있기
+	// 때문에 반드시 먼저 종료되어야 함
+	err := taskGM.Stop(string(taskmanager.TaskManagerStr), 5*time.Second)
+	if err != nil {
+		logger.Log.LogWarn("%v", err)
+		return
+	}
+
 	// 작업에 등록된 모든 고루틴 종료
-	gm.StopAll(10 * time.Second)
+	err = gm.StopAll(10 * time.Second)
+	if err != nil {
+		logger.Log.LogWarn("%v", err)
+		return
+	}
 
 	// 로그 자원 정리
 	logger.Log.FinalizeLogger()

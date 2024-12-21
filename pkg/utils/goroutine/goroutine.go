@@ -43,6 +43,7 @@ type taskWrapper struct {
 	childCtx    context.Context
 	childCancel context.CancelFunc
 	task        func(ctx context.Context)
+	isTaskRun   bool
 }
 
 // NewGoroutineManager 고루틴 관리 구조체 생성
@@ -68,13 +69,9 @@ func (gm *GoroutineManager) AddTask(name string, task func(ctx context.Context))
 	gm.mu.Lock()
 	defer gm.mu.Unlock()
 
-	// 개별 고루틴 종료를 위한 자식 컨텍스트 생성
-	ctx, cancel := context.WithCancel(gm.parentCtx)
 	// 맵에 작업 등록
 	gm.tasks[name] = &taskWrapper{
-		childCtx:    ctx,
-		childCancel: cancel,
-		task:        task,
+		task: task,
 	}
 }
 
@@ -91,10 +88,12 @@ func (gm *GoroutineManager) RemoveTask(name string, timeout time.Duration) error
 	defer gm.mu.Unlock()
 
 	if t, exists := gm.tasks[name]; exists {
-		t.childCancel()
-		if WaitGroupWithTimeout(&t.childWG, timeout) != WaitSuccess {
-			return fmt.Errorf("goroutine was not terminated within the specified timeout"+
-				"(goroutine: %s, timeout: %.2fsec)", name, timeout.Seconds())
+		if t.childCancel != nil {
+			t.childCancel()
+			if WaitGroupWithTimeout(&t.childWG, timeout) != WaitSuccess {
+				return fmt.Errorf("goroutine was not terminated within the specified timeout"+
+					"(goroutine: %s, timeout: %.2fsec)", name, timeout.Seconds())
+			}
 		}
 		delete(gm.tasks, name)
 	}
@@ -108,6 +107,16 @@ func (gm *GoroutineManager) StartAll() {
 	defer gm.mu.Unlock()
 
 	for _, t := range gm.tasks {
+		// 이미 동작 중인 작업인 경우 가동시키지 않음
+		if t.isTaskRun {
+			continue
+		}
+
+		// 개별 고루틴 종료를 위한 자식 컨텍스트 생성
+		ctx, cancel := context.WithCancel(gm.parentCtx)
+		t.childCtx = ctx
+		t.childCancel = cancel
+
 		gm.parentWG.Add(1)
 		t.childWG.Add(1)
 		tmpTask := t
@@ -116,14 +125,18 @@ func (gm *GoroutineManager) StartAll() {
 				if err := recover(); err != nil {
 					if gm.PanicHandler != nil {
 						gm.PanicHandler(err)
+					} else {
+						DefaultPanicHandler(err)
 					}
 				}
 				tw.childWG.Done()
 				gm.parentWG.Done()
 			}()
 
+			tw.isTaskRun = true
 			// 작업 가동
 			tw.task(tw.childCtx)
+			tw.isTaskRun = false
 		}(tmpTask)
 	}
 }
@@ -164,6 +177,16 @@ func (gm *GoroutineManager) Start(name string) error {
 		return fmt.Errorf("task does not exist (%s)", name)
 	}
 
+	// 이미 동작 중인 작업인 경우 가동시키지 않음
+	if t.isTaskRun {
+		return nil
+	}
+
+	// 개별 고루틴 종료를 위한 자식 컨텍스트 생성
+	ctx, cancel := context.WithCancel(gm.parentCtx)
+	t.childCtx = ctx
+	t.childCancel = cancel
+
 	gm.parentWG.Add(1)
 	t.childWG.Add(1)
 	go func() {
@@ -171,14 +194,17 @@ func (gm *GoroutineManager) Start(name string) error {
 			if err := recover(); err != nil {
 				if gm.PanicHandler != nil {
 					gm.PanicHandler(err)
+				} else {
+					DefaultPanicHandler(err)
 				}
 			}
 			t.childWG.Done()
 			gm.parentWG.Done()
 		}()
-
+		t.isTaskRun = true
 		// 작업 가동
 		t.task(t.childCtx)
+		t.isTaskRun = false
 	}()
 
 	return nil
@@ -197,10 +223,12 @@ func (gm *GoroutineManager) Stop(name string, timeout time.Duration) error {
 	defer gm.mu.Unlock()
 
 	if t, exists := gm.tasks[name]; exists {
-		t.childCancel()
-		if WaitGroupWithTimeout(&t.childWG, timeout) != WaitSuccess {
-			return fmt.Errorf("goroutine was not terminated within the specified timeout"+
-				"(goroutine: %s, timeout: %.2fsec)", name, timeout.Seconds())
+		if t.childCancel != nil {
+			t.childCancel()
+			if WaitGroupWithTimeout(&t.childWG, timeout) != WaitSuccess {
+				return fmt.Errorf("goroutine was not terminated within the specified timeout"+
+					"(goroutine: %s, timeout: %.2fsec)", name, timeout.Seconds())
+			}
 		}
 	}
 	return nil

@@ -38,8 +38,7 @@ type ResourceInfo struct {
 }
 
 type ResourceCollector struct {
-	wg   sync.WaitGroup
-	once sync.Once
+	wg sync.WaitGroup
 }
 
 // GetCurrResInfo 현재 사용 가능한 리소스 정보 구조체 포인터 반환
@@ -57,13 +56,8 @@ func GetCurrResInfo() *ResourceInfo {
 func (r *ResourceCollector) Run(ctx context.Context) {
 	var timeout time.Duration
 
-	logger.Log.LogInfo("Run resource collection goroutine")
-
 	for goroutine.WaitTimeout == goroutine.WaitCancelWithTimeout(ctx, timeout) {
-		// 런타임 중 한번만 실행됨
-		r.once.Do(func() {
-			timeout = 3 * time.Second
-		})
+		timeout = 3 * time.Second
 
 		// 사용 중이지 않은 인덱스 획득
 		notUseIdx := currUseIdx ^ 1
@@ -118,8 +112,6 @@ func (r *ResourceCollector) Run(ctx context.Context) {
 		currUseIdx ^= 1
 		ResMutex.Unlock()
 	}
-
-	logger.Log.LogInfo("stop resource collection goroutine")
 }
 
 // getCPUUsage CPU 사용률 획득
