@@ -21,9 +21,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/meloncoffee/melon_agent/config"
+	"github.com/meloncoffee/melon_agent/internal/auth"
+	"github.com/meloncoffee/melon_agent/internal/logger"
 	"github.com/meloncoffee/melon_agent/internal/metric"
 	"github.com/meloncoffee/melon_agent/internal/router/handler"
 	"github.com/meloncoffee/melon_agent/internal/router/middleware"
+	"github.com/meloncoffee/melon_agent/pkg/utils/file"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thoas/stats"
 )
@@ -31,6 +34,7 @@ import (
 var (
 	JwtSecretKey string
 
+	admin     auth.Account
 	servStats *stats.Stats
 	doOnce    sync.Once
 )
@@ -47,6 +51,15 @@ func NewGinRouterEngine() *gin.Engine {
 		prometheus.MustRegister(m)
 		// Stats 구조체 생성
 		servStats = stats.New()
+		// Admin 계정 로드
+		if file.IsFileExists(config.AdminAccountPath) {
+			var err error
+			// 파일에 저장되어 있는 Admin 계정 복호화
+			admin.ID, admin.PW, err = auth.DecryptAdminAccountFromFile(config.AdminAccountPath)
+			if err != nil {
+				logger.Log.LogWarn("%v", err)
+			}
+		}
 	})
 
 	// gin 동작 모드 설정
@@ -68,6 +81,8 @@ func NewGinRouterEngine() *gin.Engine {
 	r.Use(middleware.VersionMiddleware())
 	// 요청 통계를 수집하고 기록하는 미들웨어 등록
 	r.Use(middleware.StatMiddleware(servStats))
+	// 요청 헤더에 생략된 타입이 있는 경우 기본 값으로 세팅하는 미들웨어 등록
+	r.Use(middleware.SetDefHeaderTypeMiddleware())
 
 	// 요청 핸들러 등록
 	r.GET(config.Conf.API.MetricURI, handler.MetricsHandler)
@@ -80,7 +95,9 @@ func NewGinRouterEngine() *gin.Engine {
 	r.POST(config.Conf.API.LoginURI, func(ctx *gin.Context) {
 		handler.LoginHandler(ctx, JwtSecretKey)
 	})
-	r.POST(config.Conf.API.RegisterAdminURI, handler.RegisterAdminHandler)
+	r.POST(config.Conf.API.RegisterAdminURI, func(ctx *gin.Context) {
+		handler.RegisterAdminHandler(ctx, &admin)
+	})
 
 	// `/protected` 그룹에 속하는 모든 라우터는 JWT 토큰 검증 수행
 	protected := r.Group("/protected")

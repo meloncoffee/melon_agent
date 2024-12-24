@@ -18,12 +18,18 @@ package handler
 
 import (
 	"net/http"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/meloncoffee/melon_agent/config"
 	"github.com/meloncoffee/melon_agent/internal/auth"
+	"github.com/meloncoffee/melon_agent/internal/logger"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/thoas/stats"
+)
+
+var (
+	adminMu sync.Mutex
 )
 
 // MetricsHandler prometheus 메트릭 제공 핸들러
@@ -111,6 +117,47 @@ func LoginHandler(c *gin.Context, jwtSecretKey string) {
 //
 // Parameters:
 //   - c: HTTP 요청 및 응답과 관련된 정보를 포함하는 객체
-func RegisterAdminHandler(c *gin.Context) {
-	// TODO: 구현
+func RegisterAdminHandler(c *gin.Context, admin *auth.Account) {
+	adminMu.Lock()
+	defer adminMu.Unlock()
+
+	var reqAdmin auth.Account
+
+	// Content-Type 검증
+	if c.GetHeader("Content-Type") != "application/json" {
+		c.JSON(http.StatusUnsupportedMediaType, gin.H{"error": "Unsupported Content-Type"})
+		return
+	}
+
+	// 이미 admin ID/PW가 존재한다면, 새로 등록하지 않음
+	if admin.ID != "" && admin.PW != "" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Admin account already registered exists"})
+		return
+	}
+
+	// 요청 바디에서 JSON 바인딩
+	if err := c.ShouldBindJSON(&reqAdmin); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	// ID/PW가 정상적으로 파싱되었는지 확인
+	if reqAdmin.ID == "" || reqAdmin.PW == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid admin id/pw"})
+		return
+	}
+
+	// Admin 계정 정보 저장
+	admin.ID = reqAdmin.ID
+	admin.PW = reqAdmin.PW
+
+	go func(id, pw string) {
+		// 관리자 계정 정보를 암호화하여 파일에 저장
+		err := auth.EncryptAdminAccountToFile(config.AdminAccountPath, id, pw)
+		if err != nil {
+			logger.Log.LogError("%v", err)
+		}
+	}(admin.ID, admin.PW)
+
+	c.JSON(http.StatusOK, gin.H{"success": "Admin account registration was successful"})
 }

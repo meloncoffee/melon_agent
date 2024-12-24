@@ -117,6 +117,22 @@ func StatMiddleware(servStats *stats.Stats) gin.HandlerFunc {
 	}
 }
 
+// SetDefHeaderTypeMiddleware 요청 헤더에 생략된 타입이 있는 경우 기본 값으로 세팅하는 미들웨어
+//
+// Returns:
+//   - gin.HandlerFunc: gin 미들웨어
+func SetDefHeaderTypeMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Content-Type 헤더 확인
+		if c.GetHeader("Content-Type") == "" {
+			// Content-Type이 없으면 기본값으로 설정
+			c.Request.Header.Set("Content-Type", "application/json")
+		}
+
+		c.Next()
+	}
+}
+
 // JwtMiddleware JWT 미들웨어
 //
 // Parameters:
@@ -158,9 +174,9 @@ func JwtMiddleware(jwtSecretKey string) gin.HandlerFunc {
 			return
 		}
 
-		// Claims에서 유저 정보 추출
+		// Claims에서 ID 추출
 		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-			c.Set("username", claims["username"])
+			c.Set("id", claims["id"])
 		} else {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token claims"})
 			c.Abort()

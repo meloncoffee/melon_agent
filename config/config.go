@@ -38,8 +38,9 @@ const (
 )
 
 const (
-	TLSCertPath = "cert/melon_agent.crt"
-	TLSKeyPath  = "cert/melon_agent.key"
+	TLSCertPath      = "cert/melon_agent.crt"
+	TLSKeyPath       = "cert/melon_agent.key"
+	AdminAccountPath = "auth/.admin"
 )
 
 // Config 설정 정보 구조체

@@ -33,10 +33,9 @@ import (
 func WriteDataToTextFile[T any](filePath string, data T, isMakeDir bool) error {
 	if isMakeDir {
 		// 디렉터리가 존재하지 않을 경우 생성
-		dir := filepath.Dir(filePath)
-		err := os.MkdirAll(dir, os.ModePerm)
+		err := MakeDirAll(filePath, os.ModePerm)
 		if err != nil {
-			return fmt.Errorf("failed to make directory: %v", err)
+			return err
 		}
 	}
 
@@ -67,4 +66,22 @@ func IsFileExists(filePath string) bool {
 		return false
 	}
 	return !stat.IsDir()
+}
+
+// MakeDirAll 파일 경로 전체 생성
+//
+// Parameters:
+//   - filePath: 파일 경로
+//   - perm: 경로 퍼미션
+//
+// Returns:
+//   - error: 성공(nil), 실패(error)
+func MakeDirAll(filePath string, perm os.FileMode) error {
+	dir := filepath.Dir(filePath)
+	err := os.MkdirAll(dir, perm)
+	if err != nil {
+		return fmt.Errorf("failed to make directory: %v", err)
+	}
+
+	return nil
 }
