@@ -23,16 +23,16 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"syscall"
 	"time"
 
 	"github.com/meloncoffee/melon_agent/config"
 	"github.com/meloncoffee/melon_agent/internal/auth"
 	"github.com/meloncoffee/melon_agent/internal/logger"
 	"github.com/meloncoffee/melon_agent/internal/router"
+	"github.com/meloncoffee/melon_agent/internal/taskmanager"
 	"github.com/meloncoffee/melon_agent/pkg/certificate"
+	"github.com/meloncoffee/melon_agent/pkg/utils/channel"
 	"github.com/meloncoffee/melon_agent/pkg/utils/file"
-	"github.com/meloncoffee/melon_agent/pkg/utils/process"
 )
 
 type Server struct{}
@@ -58,7 +58,7 @@ func (s *Server) Run(ctx context.Context) {
 				"Melon", 3650)
 			if err != nil {
 				logger.Log.LogError("%v", err)
-				process.SendSignal(config.RunConf.Pid, syscall.SIGUSR1)
+				channel.SendChannel(taskmanager.TaskManagerChan, taskmanager.ServerReload)
 				return
 			}
 		}
@@ -67,7 +67,7 @@ func (s *Server) Run(ctx context.Context) {
 		cert, err := tls.LoadX509KeyPair(config.TLSCertPath, config.TLSKeyPath)
 		if err != nil {
 			logger.Log.LogError("Failed to load TLS certificate: %v", err)
-			process.SendSignal(config.RunConf.Pid, syscall.SIGUSR1)
+			channel.SendChannel(taskmanager.TaskManagerChan, taskmanager.ServerReload)
 			return
 		}
 
@@ -88,7 +88,7 @@ func (s *Server) Run(ctx context.Context) {
 		router.JwtSecretKey, err = auth.GenJWTSecretKey(32)
 		if err != nil {
 			logger.Log.LogError("Failed to generate JWT secret key: %v", err)
-			process.SendSignal(config.RunConf.Pid, syscall.SIGUSR1)
+			channel.SendChannel(taskmanager.TaskManagerChan, taskmanager.ServerReload)
 			return
 		}
 	}
@@ -114,7 +114,7 @@ func (s *Server) Run(ctx context.Context) {
 			err := server.ListenAndServeTLS("", "")
 			if err != nil && err != http.ErrServerClosed {
 				logger.Log.LogError("Server error occurred: %v", err)
-				process.SendSignal(config.RunConf.Pid, syscall.SIGUSR1)
+				channel.SendChannel(taskmanager.TaskManagerChan, taskmanager.ServerReload)
 			}
 		}()
 	} else {
@@ -123,7 +123,7 @@ func (s *Server) Run(ctx context.Context) {
 			err := server.ListenAndServe()
 			if err != nil && err != http.ErrServerClosed {
 				logger.Log.LogError("Server error occurred: %v", err)
-				process.SendSignal(config.RunConf.Pid, syscall.SIGUSR1)
+				channel.SendChannel(taskmanager.TaskManagerChan, taskmanager.ServerReload)
 			}
 		}()
 	}

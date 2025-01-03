@@ -25,6 +25,14 @@ import (
 	"github.com/meloncoffee/melon_agent/pkg/utils/goroutine"
 )
 
+type OperType int
+
+const (
+	ServerReload OperType = iota
+	ResCollectorReload
+	ConfReload
+)
+
 type TaskType int
 
 const (
@@ -75,10 +83,10 @@ func (t TaskStrType) Int() int {
 	return -1
 }
 
-var TaskManagerChan chan TaskType
+var TaskManagerChan chan OperType
 
 func init() {
-	TaskManagerChan = make(chan TaskType, 10)
+	TaskManagerChan = make(chan OperType, 10)
 }
 
 type TaskManager struct {
@@ -113,7 +121,7 @@ func (t *TaskManager) Run(ctx context.Context, gm *goroutine.GoroutineManager) {
 	t.wg.Wait()
 }
 
-// taskChannelManager 작업 채널로 들어오는 TaskType 처리
+// taskChannelManager 작업 채널로 들어오는 OperType 처리
 //
 // Parameters:
 //   - gm: 고루틴 작업 정보 구조체
@@ -121,16 +129,18 @@ func (t *TaskManager) taskChannelManager(gm *goroutine.GoroutineManager) {
 	for task := range TaskManagerChan {
 		switch task {
 		// 서버 고루틴 재가동
-		case ServerType:
+		case ServerReload:
 			time.Sleep(1 * time.Second)
-			err := gm.Start(ServerType.String())
+			gm.Stop(string(ServerStr), -1)
+			err := gm.Start(string(ServerStr))
 			if err != nil {
 				logger.Log.LogError("%v", err)
 			}
 		// 리소스 수집 고루틴 재가동
-		case ResourceCollectorType:
+		case ResCollectorReload:
 			time.Sleep(1 * time.Second)
-			err := gm.Start(ResourceCollectorType.String())
+			gm.Stop(string(ResourceCollectorStr), -1)
+			err := gm.Start(string(ResourceCollectorStr))
 			if err != nil {
 				logger.Log.LogError("%v", err)
 			}
